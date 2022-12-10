@@ -1,6 +1,8 @@
 mod region;
-pub use region::{Money, Region};
+use region::{Money, Region};
 
+use rayon::prelude::*;
+use rayon::vec::IntoIter;
 use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::fmt;
@@ -97,29 +99,28 @@ impl Country {
         if target_count >= self.regions.len() {
             return Err(());
         }
-        let mut links: Vec<(&str, &str)> = self
+        let mut links: Vec<(String, String)> = self
             .regions
             .values()
-            .map(|r| r.links.iter().map(|l| (r.name.as_ref(), l.as_ref())))
+            .map(|r| r.links.iter().map(|l| (r.name.clone(), l.clone())))
             .flatten()
             .collect();
         links.sort();
         links.dedup();
-        let mut best = None;
-        for link in links {
-            let mut cloned = self.clone();
-            cloned.fuse_regions(link);
-            cloned.optimize(target_count)?;
-            match best {
-                None => best = Some(cloned),
-                Some(ref mut best) => {
-                    // TODO: do not recalculate std_dev_sq
-                    if cloned.std_dev_sq() < best.std_dev_sq() {
-                        *best = cloned;
-                    }
-                }
-            }
-        }
+        let best = links
+            .into_par_iter()
+            .map(|link| {
+                let mut cloned = self.clone();
+                cloned.fuse_regions((link.0.as_ref(), link.1.as_ref()));
+                // TODO change
+                cloned.optimize(target_count).unwrap();
+                cloned
+            })
+            .min_by(|a, b| {
+                a.std_dev_sq()
+                    .partial_cmp(&b.std_dev_sq())
+                    .unwrap_or(Ordering::Less)
+            });
         best.map(|b| *self = b).ok_or(())
     }
 
