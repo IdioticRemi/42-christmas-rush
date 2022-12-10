@@ -14,7 +14,7 @@ fn main() {
     println!("{country}");
 
     // country.organize(target_region_count);
-    country.optimize(target_region_count).unwrap();
+    country.optimize2(target_region_count).unwrap();
 
     println!("{country}");
 

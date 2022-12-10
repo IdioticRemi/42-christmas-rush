@@ -124,6 +124,40 @@ impl Country {
         best.map(|b| *self = b).ok_or(())
     }
 
+    pub fn optimize2(&mut self, target_count: usize) -> Result<(), ()> {
+        match target_count.cmp(&self.regions.len()) {
+            Ordering::Equal => return Ok(()),
+            Ordering::Greater => return Err(()),
+            _ => {}
+        }
+        if target_count >= self.regions.len() {
+            return Err(());
+        }
+        let mut links: Vec<(String, String)> = self
+            .regions
+            .values()
+            .map(|r| r.links.iter().map(|l| if &r.name < l { (r.name.clone(), l.clone()) } else { (l.clone(), r.name.clone()) }))
+            .flatten()
+            .collect();
+        links.sort();
+        links.dedup();
+        let best = links
+            .into_par_iter()
+            .map(|link| {
+                let mut cloned = self.clone();
+                cloned.fuse_regions((link.0.as_ref(), link.1.as_ref()));
+                // TODO change
+                cloned.optimize2(target_count).unwrap();
+                cloned
+            })
+            .min_by(|a, b| {
+                a.std_dev_sq()
+                    .partial_cmp(&b.std_dev_sq())
+                    .unwrap_or(Ordering::Less)
+            });
+        best.map(|b| *self = b).ok_or(())
+    }
+
     fn remove_link_from_region(&mut self, region_name: &str, name: &str) {
         let pos = self.regions[region_name]
             .links
