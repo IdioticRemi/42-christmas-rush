@@ -11,7 +11,12 @@ fn main() {
     let input = std::fs::read_to_string(input_file).unwrap();
 
     let mut country: Country = input.parse().unwrap();
-    country.organize(target_region_count);
+    println!("{country}");
+
+    // country.organize(target_region_count);
+    country.optimize(target_region_count).unwrap();
+
+    println!("{country}");
 
     let mut regions: Vec<_> = country.regions.values().map(|r| r.name.as_ref()).collect();
     regions.sort();

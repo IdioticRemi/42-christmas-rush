@@ -1,12 +1,13 @@
 mod region;
 pub use region::{Money, Region};
 
+use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::fmt;
 use std::fmt::Formatter;
 use std::str::FromStr;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Country {
     pub regions: HashMap<String, Region>,
 }
@@ -34,30 +35,92 @@ impl Country {
         self.std_dev_sq().sqrt()
     }
 
-    pub fn organize(&mut self, count: usize) {
-        let final_avg_gdp = self.total_gdp() / count as Money;
-        let score = |(a, b): (&Region, &Region)| (a.gdp + b.gdp - final_avg_gdp).abs();
-
-        while self.regions.len() > count {
-            let mut best: Option<(&Region, &Region)> = None;
-
-            for region in self.regions.values() {
-                for other in region.links.iter().map(|o| &self.regions[o]) {
-                    match best {
-                        None => best = Some((region, other)),
-                        Some(ref mut best) => {
-                            if score((region, other)) < score(*best) {
-                                *best = (region, other);
-                            }
+    fn regions_to_fuse(&self, target_gdp: Money) -> (String, String) {
+        let score = |(a, b): (&Region, &Region)| (a.gdp + b.gdp - target_gdp).abs();
+        let mut best: Option<(&Region, &Region)> = None;
+        for region in self.regions.values() {
+            for other in region.links.iter().map(|o| &self.regions[o]) {
+                match best {
+                    None => best = Some((region, other)),
+                    Some(ref mut best) => {
+                        if score((region, other)) < score(*best) {
+                            *best = (region, other);
                         }
                     }
                 }
             }
+        }
+        let best = best.unwrap();
+        (best.0.name.clone(), best.1.name.clone())
+    }
 
-            let best = best.unwrap();
-            let best = (best.0.name.clone(), best.1.name.clone());
+    fn regions_to_fuse_smallest(&self, target_gdp: Money) -> (String, String) {
+        let score = |(a, b): (&Region, &Region)| (a.gdp + b.gdp - target_gdp).abs();
+        let mut sorted: Vec<&Region> = self.regions.values().collect();
+        sorted.sort_by(|a, b| a.gdp.partial_cmp(&b.gdp).unwrap_or(Ordering::Less));
+
+        for region in sorted {
+            let mut best: Option<(&Region, &Region)> = None;
+            for other in region.links.iter().map(|r| &self.regions[r]) {
+                match best {
+                    None => best = Some((region, other)),
+                    Some(ref mut best) => {
+                        if score((region, other)) < score(*best) {
+                            *best = (region, other);
+                        }
+                    }
+                }
+            }
+            if let Some(best) = best {
+                return (best.0.name.clone(), best.1.name.clone());
+            }
+        }
+        panic!("Could not find any link")
+    }
+
+    pub fn organize(&mut self, count: usize) {
+        let final_avg_gdp = self.total_gdp() / count as Money;
+
+        while self.regions.len() > count {
+            // let best = self.regions_to_fuse(final_avg_gdp);
+            let best = self.regions_to_fuse_smallest(final_avg_gdp);
             self.fuse_regions((&best.0, &best.1));
         }
+    }
+
+    pub fn optimize(&mut self, target_count: usize) -> Result<(), ()> {
+        match target_count.cmp(&self.regions.len()) {
+            Ordering::Equal => return Ok(()),
+            Ordering::Greater => return Err(()),
+            _ => {}
+        }
+        if target_count >= self.regions.len() {
+            return Err(());
+        }
+        let mut links: Vec<(&str, &str)> = self
+            .regions
+            .values()
+            .map(|r| r.links.iter().map(|l| (r.name.as_ref(), l.as_ref())))
+            .flatten()
+            .collect();
+        links.sort();
+        links.dedup();
+        let mut best = None;
+        for link in links {
+            let mut cloned = self.clone();
+            cloned.fuse_regions(link);
+            cloned.optimize(target_count)?;
+            match best {
+                None => best = Some(cloned),
+                Some(ref mut best) => {
+                    // TODO: do not recalculate std_dev_sq
+                    if cloned.std_dev_sq() < best.std_dev_sq() {
+                        *best = cloned;
+                    }
+                }
+            }
+        }
+        best.map(|b| *self = b).ok_or(())
     }
 
     fn remove_link_from_region(&mut self, region_name: &str, name: &str) {

@@ -2,7 +2,7 @@ use std::str::FromStr;
 
 pub type Money = f64;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Region {
     pub name: String,
     pub gdp: Money,
