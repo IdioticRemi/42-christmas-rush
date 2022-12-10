@@ -182,32 +182,27 @@ impl fmt::Display for France {
 }
 
 fn main() {
-    let input = include_str!("../subject/exempleRegion.txt");
+    let mut args = std::env::args().skip(1);
+
+    let inputFile = args.next().unwrap();
+    let outputFile = args.next().unwrap();
+    let targetRegionCount: usize = args.next().unwrap().parse().unwrap();
+
+    let input = std::fs::read_to_string(inputFile).unwrap();
+
     let mut france: France = input.parse().unwrap();
 
+    // println!("{france}");
+
+    france.organize(targetRegionCount);
+
     println!("{france}");
+    // dbg!(&france);
 
-    france.organize(6);
-
-    println!("{france}");
-    dbg!(&france);
-
-    let mut regions: Vec<_> = france.regions.values().map(|r| &r.name).collect();
+    let mut regions: Vec<_> = france.regions.values().map(|r| r.name.as_ref()).collect();
     regions.sort();
 
-    for region in regions {
-        println!("{region}");
-    }
-
-    // let input = include_str!("../subject/exempleTest.txt");
-    // let mut france: France = input.parse().unwrap();
-    //
-    // println!("{france}");
-    //
-    // france.organize(2);
-    //
-    // println!("{france}");
-    // println!("{:?}", france.regions["Nord"]);
+    std::fs::write(outputFile, regions.join("\n")).unwrap();
 }
 
 #[cfg(test)]

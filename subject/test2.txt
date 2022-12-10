@@ -1,0 +1,6 @@
+Nord : 326 : Paris-Alsace-Normandie
+Alsace : 310 : Paris-Bourgogne-Nord
+Normandie : 272 : Paris-Nord-Bretagne-Loire-Centre
+Auvergne : 726 : Aquitaine-Occitanie-Azur-Bourgogne-Centre
+Bretagne : 328 : Normandie-Loire
+Paris : 339 : Nord-Alsace-Normandie-Bourgogne-Centre
