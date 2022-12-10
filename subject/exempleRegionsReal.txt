@@ -1,5 +1,5 @@
 Nord : 4060 : Picardie
-Picardie : 1927 : Paris-Champagne-HNormandie
+Picardie : 1927 : Paris-Champagne-HNormandie-Nord
 HNormandie : 1849 : BNormandie-Centre-Paris-Picardie
 Champagne : 1339 : Lorraine-FCompte-Bourgogne-Paris-Picardie
 Lorraine : 2345 : Alsace-FCompte-Champagne
@@ -10,7 +10,7 @@ Provence : 4953 : Rhone-Languedoc
 Languedoc : 2729 : Rhone-Provence-Midi-Auvergne
 Midi : 2953 : Aquitaine-Limousin-Auvergne-Languedoc
 Aquitaine : 1789 : Poitou-Limousin-Auvergne-Midi
-Auvergne : 1357 : Rhone-Languedoc-Midi-Limousin-Centre-Bourgogne
+Auvergne : 1357 : Rhone-Languedoc-Midi-Limousin-Centre-Bourgogne-Aquitaine
 Limousin : 737 : Auvergne-Centre-Poitou-Aquitaine-Midi
 Poitou : 1789 : Aquitaine-Limousin-Centre-Loire
 Loire : 3660 : Bretagne-BNormandie-Centre-Poitou
