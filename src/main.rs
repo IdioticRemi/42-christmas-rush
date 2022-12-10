@@ -211,6 +211,7 @@ mod tests {
 
     const INPUT: &str = include_str!("../subject/exempleRegion.txt");
     const INPUT_TEST: &str = include_str!("../subject/exempleTest.txt");
+    const INPUT_REAL: &str = include_str!("../subject/exempleRegionsReal.txt");
 
     #[test]
     fn remove_link_from_region() {
@@ -246,16 +247,24 @@ mod tests {
     }
 
     fn check_bidir_links(france: France) {
+        let mut missing_links = vec![];
+
         for region in france.regions.values() {
             for other in region.links.iter() {
-                assert!(france.regions[other].links.contains(&region.name));
+                if !france.regions[other].links.contains(&region.name) {
+                    missing_links.push(format!("{} is not linked with {}", other, region.name));
+                }
+                // assert!(france.regions[other].links.contains(&region.name), "", other, region.name);
             }
         }
+
+        assert!(missing_links.is_empty(), "\n{}\n", missing_links.join("\n"))
     }
 
     #[test]
     fn bidirectional_links() {
         check_bidir_links(INPUT.parse().unwrap());
         check_bidir_links(INPUT_TEST.parse().unwrap());
+        check_bidir_links(INPUT_REAL.parse().unwrap());
     }
 }
