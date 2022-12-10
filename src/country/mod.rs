@@ -2,7 +2,6 @@ mod region;
 use region::{Money, Region};
 
 use rayon::prelude::*;
-use rayon::vec::IntoIter;
 use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::fmt;
@@ -130,17 +129,24 @@ impl Country {
             Ordering::Greater => return Err(()),
             _ => {}
         }
-        if target_count >= self.regions.len() {
-            return Err(());
+
+//        let mut links: Vec<(String, String)> = self
+//        .regions
+//        .values()
+//        .map(|r| r.links.iter().map(|l| if &r.name < l { (r.name.clone(), l.clone()) } else { (l.clone(), r.name.clone()) }))
+//        .flatten()
+//        .collect();
+
+        let mut links = vec![];
+
+        for region in self.regions.values() {
+            for link in region.links.iter() {
+                if &region.name > link {
+                    links.push((region.name.clone(), link.clone()));
+                }
+            }
         }
-        let mut links: Vec<(String, String)> = self
-            .regions
-            .values()
-            .map(|r| r.links.iter().map(|l| if &r.name < l { (r.name.clone(), l.clone()) } else { (l.clone(), r.name.clone()) }))
-            .flatten()
-            .collect();
-        links.sort();
-        links.dedup();
+
         let best = links
             .into_par_iter()
             .map(|link| {
