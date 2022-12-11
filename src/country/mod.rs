@@ -6,7 +6,15 @@ use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::fmt;
 use std::fmt::Formatter;
+use std::ops::Index;
 use std::str::FromStr;
+
+fn money_compare(a: &Money, b: &Money) -> Ordering {
+    a.partial_cmp(&b).unwrap_or(Ordering::Less)
+}
+fn region_compare(a: &&Region, b: &&Region) -> Ordering {
+    money_compare(&a.gdp, &b.gdp)
+}
 
 #[derive(Debug, Clone)]
 pub struct Country {
@@ -34,6 +42,44 @@ impl Country {
 
     fn std_dev(&self) -> Money {
         self.std_dev_sq().sqrt()
+    }
+
+    fn optimal_std_dev_sq(&self, target_count: usize) -> Money {
+        let mut gdp_sorted: Vec<_> = self.regions.values().map(|r| r.gdp).collect();
+
+        gdp_sorted.sort_by(money_compare);
+
+        let to_fuse = gdp_sorted.len() - target_count;
+        let mut to_spread: Money = gdp_sorted[..to_fuse].iter().sum();
+
+        let to_spread_on = &mut gdp_sorted[to_fuse..];
+
+        let mut surface_heigth = to_spread_on[0];
+        for surface_width in 1.. {
+            let fill_height = match to_spread_on.get(surface_width) {
+                Some(x) => (x - surface_heigth) / surface_width as Money,
+                None => to_spread / surface_width as Money,
+            };
+
+            let to_add = fill_height.min(to_spread / surface_width as Money);
+            surface_heigth += to_add;
+            to_spread -= to_add;
+
+            if to_spread <= 0.0 {
+                to_spread_on[..surface_width].iter_mut().for_each(|v| {
+                    *v = surface_heigth / surface_width as Money;
+                });
+                break;
+            }
+        }
+
+        let avg_gdp = self.total_gdp() / target_count as Money;
+
+        to_spread_on
+            .iter()
+            .map(|gdp| (gdp - avg_gdp).powi(2))
+            .sum::<Money>()
+            / target_count as Money
     }
 
     fn regions_to_fuse(&self, target_gdp: Money) -> (String, String) {
@@ -130,12 +176,12 @@ impl Country {
             _ => {}
         }
 
-//        let mut links: Vec<(String, String)> = self
-//        .regions
-//        .values()
-//        .map(|r| r.links.iter().map(|l| if &r.name < l { (r.name.clone(), l.clone()) } else { (l.clone(), r.name.clone()) }))
-//        .flatten()
-//        .collect();
+        //        let mut links: Vec<(String, String)> = self
+        //        .regions
+        //        .values()
+        //        .map(|r| r.links.iter().map(|l| if &r.name < l { (r.name.clone(), l.clone()) } else { (l.clone(), r.name.clone()) }))
+        //        .flatten()
+        //        .collect();
 
         let mut links = vec![];
 
@@ -272,5 +318,12 @@ mod tests {
     fn bidirectional_links() {
         check_bidir_links(INPUT.parse().unwrap());
         check_bidir_links(INPUT_TEST.parse().unwrap());
+    }
+
+    #[test]
+    fn optimal_std_dev_sq() {
+        let mut country: Country = INPUT_TEST.parse().unwrap();
+
+        assert_eq!(country.optimal_std_dev_sq(2), 1.0)
     }
 }
