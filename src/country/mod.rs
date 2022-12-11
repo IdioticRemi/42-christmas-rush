@@ -7,6 +7,7 @@ use std::collections::HashMap;
 use std::fmt;
 use std::fmt::Formatter;
 use std::str::FromStr;
+use std::sync::RwLock;
 
 fn money_compare(a: &Money, b: &Money) -> Ordering {
     a.partial_cmp(&b).unwrap_or(Ordering::Less)
@@ -243,33 +244,36 @@ impl Country {
             Ordering::Greater => return Err(()),
             _ => {}
         }
-        let mut best_std_dev_sq_yet = Money::INFINITY;
-        let result = self.optimize3_quel_enfer(target_count, &mut best_std_dev_sq_yet);
-        result.map(|r| *self = r).ok_or(())
+        // let mut best_yet = Money::INFINITY;
+        let mut best_yet = RwLock::new((Money::INFINITY, None));
+        self.optimize3_quel_enfer(target_count, &mut best_yet);
+        best_yet
+            .into_inner()
+            .unwrap()
+            .1
+            .map(|r| *self = r)
+            .ok_or(())
     }
 
     pub fn optimize3_quel_enfer(
         &self,
         target_count: usize,
-        best_std_dev_sq_yet: &mut Money,
-    ) -> Option<Country> {
-        match target_count.cmp(&self.regions.len()) {
-            Ordering::Equal => {
-                let std_dev_sq = self.std_dev_sq();
-                return if std_dev_sq < *best_std_dev_sq_yet {
-                    *best_std_dev_sq_yet = std_dev_sq;
-                    Some(self.clone())
-                } else {
-                    None
-                }
-            },
-            Ordering::Greater => return None,
-            _ => {}
+        best_yet: &RwLock<(Money, Option<Country>)>,
+    ) {
+        if target_count == self.regions.len() {
+            let std_dev_sq = self.std_dev_sq();
+            let mut writer = best_yet.write().unwrap();
+            if std_dev_sq < writer.0 {
+                *writer = (std_dev_sq, Some(self.clone()));
+            }
+            return;
         }
 
         // TODO: refactor into iterator
+        let mut regions_sorted: Vec<_> = self.regions.values().collect();
+        regions_sorted.sort_by(region_compare);
         let mut links = vec![];
-        for region in self.regions.values() {
+        for region in regions_sorted {
             for link in region.links.iter() {
                 if &region.name > link {
                     links.push((region.name.clone(), link.clone()));
@@ -282,18 +286,27 @@ impl Country {
         //     ).unwrap_or(Ordering::Less)
         // });
 
-        let mut best = None;
-        for link in links {
-            let mut cloned = self.clone();
-            cloned.fuse_regions((link.0.as_ref(), link.1.as_ref()));
-            if cloned.optimal_std_dev_sq2(target_count) < *best_std_dev_sq_yet {
-                let result = cloned.optimize3_quel_enfer(target_count, best_std_dev_sq_yet);
-                if result.is_some() {
-                    best = result;
+        // let mut best = None;
+        // for link in links {
+        //     let mut cloned = self.clone();
+        //     cloned.fuse_regions((link.0.as_ref(), link.1.as_ref()));
+        //     if cloned.optimal_std_dev_sq2(target_count) < *best_yet {
+        //         let result = cloned.optimize3_quel_enfer(target_count, best_yet);
+        //         if result.is_some() {
+        //             best = result;
+        //         }
+        //     }
+        // }
+        links
+            .par_iter()
+            .map(|link| {
+                let mut cloned = self.clone();
+                cloned.fuse_regions((link.0.as_ref(), link.1.as_ref()));
+                if cloned.optimal_std_dev_sq2(target_count) < best_yet.read().unwrap().0 {
+                    cloned.optimize3_quel_enfer(target_count, best_yet);
                 }
-            }
-        }
-        best
+            })
+            .for_each(|_| {});
     }
 
     fn remove_link_from_region(&mut self, region_name: &str, name: &str) {
