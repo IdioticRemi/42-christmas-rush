@@ -210,6 +210,43 @@ impl Country {
         best.map(|b| *self = b).ok_or(())
     }
 
+    pub fn optimize3(&mut self, target_count: usize) -> Result<(), ()> {
+        self.optimize3_quel_enfer(target_count, Money::INFINITY)
+    }
+
+    pub fn optimize3_quel_enfer(&mut self, target_count: usize, best_std_dev_sq_yet: Money) -> Result<(), ()> {
+        match target_count.cmp(&self.regions.len()) {
+            Ordering::Equal => return Ok(()),
+            Ordering::Greater => return Err(()),
+            _ => {}
+        }
+
+        let mut links = vec![];
+
+        for region in self.regions.values() {
+            for link in region.links.iter() {
+                if &region.name > link {
+                    links.push((region.name.clone(), link.clone()));
+                }
+            }
+        }
+
+        let best = links
+            .into_par_iter()
+            .map(|link| {
+                let mut cloned = self.clone();
+                cloned.fuse_regions((link.0.as_ref(), link.1.as_ref()));
+                cloned.optimize2(target_count).unwrap();
+                cloned
+            })
+            .min_by(|a, b| {
+                a.std_dev_sq()
+                    .partial_cmp(&b.std_dev_sq())
+                    .unwrap_or(Ordering::Less)
+            });
+        best.map(|b| *self = b).ok_or(())
+    }
+
     fn remove_link_from_region(&mut self, region_name: &str, name: &str) {
         let pos = self.regions[region_name]
             .links
