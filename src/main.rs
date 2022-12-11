@@ -21,7 +21,7 @@ fn main() {
     };
 
     let error_output_file = output_file.clone();
-    std::panic::set_hook(Box::new(move |_| {
+    std::panic::set_hook(Box::new(move |_info| {
         if let Err(error) = std::fs::write(&error_output_file,"Error\n") {
             eprintln!("Could not write to {error_output_file}: {error}");
         }
@@ -33,7 +33,7 @@ fn main() {
     let mut country: Country = input.parse().unwrap();
 
     assert_ne!(target_region_count, 0);
-    assert!(target_region_count > country.regions.len());
+    assert!(target_region_count <= country.regions.len());
 
     country.optimize3(target_region_count).unwrap();
 
