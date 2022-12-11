@@ -6,7 +6,6 @@ use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::fmt;
 use std::fmt::Formatter;
-use std::ops::Index;
 use std::str::FromStr;
 
 fn money_compare(a: &Money, b: &Money) -> Ordering {
@@ -80,6 +79,34 @@ impl Country {
             .map(|gdp| (gdp - avg_gdp).powi(2))
             .sum::<Money>()
             / target_count as Money
+    }
+
+    fn optimal_std_dev_sq2(&self, target_count: usize) -> Money {
+        let mut gdp_sorted: Vec<_> = self.regions.values().map(|r| r.gdp).collect();
+        gdp_sorted.sort_by(money_compare);
+        let to_fuse = gdp_sorted.len() - target_count;
+        let to_spread: Money = gdp_sorted[..to_fuse].iter().sum();
+        let to_spread_on = &gdp_sorted[to_fuse..];
+        let target_avg = (to_spread + to_spread_on.iter().sum::<Money>()) / target_count as Money;
+        let mut sum = 0.0;
+        for (i, (a, b)) in to_spread_on
+            .iter()
+            .zip(to_spread_on.iter().skip(1))
+            .enumerate()
+        {
+            let width = i + 1;
+            sum += a;
+            if sum + to_spread < b * (width + 1) as Money {
+                let spread_gdp = (sum + to_spread) / width as Money;
+                return ((target_avg - spread_gdp).powi(2) * (width as Money)
+                    + to_spread_on[width..]
+                        .iter()
+                        .map(|gdp| (target_avg - gdp).powi(2))
+                        .sum::<Money>())
+                    / target_count as Money;
+            }
+        }
+        0.0
     }
 
     fn regions_to_fuse(&self, target_gdp: Money) -> (String, String) {
@@ -211,18 +238,37 @@ impl Country {
     }
 
     pub fn optimize3(&mut self, target_count: usize) -> Result<(), ()> {
-        self.optimize3_quel_enfer(target_count, Money::INFINITY)
-    }
-
-    pub fn optimize3_quel_enfer(&mut self, target_count: usize, best_std_dev_sq_yet: Money) -> Result<(), ()> {
         match target_count.cmp(&self.regions.len()) {
             Ordering::Equal => return Ok(()),
             Ordering::Greater => return Err(()),
             _ => {}
         }
+        let mut best_std_dev_sq_yet = Money::INFINITY;
+        let result = self.optimize3_quel_enfer(target_count, &mut best_std_dev_sq_yet);
+        result.map(|r| *self = r).ok_or(())
+    }
 
+    pub fn optimize3_quel_enfer(
+        &self,
+        target_count: usize,
+        best_std_dev_sq_yet: &mut Money,
+    ) -> Option<Country> {
+        match target_count.cmp(&self.regions.len()) {
+            Ordering::Equal => {
+                let std_dev_sq = self.std_dev_sq();
+                return if std_dev_sq < *best_std_dev_sq_yet {
+                    *best_std_dev_sq_yet = std_dev_sq;
+                    Some(self.clone())
+                } else {
+                    None
+                }
+            },
+            Ordering::Greater => return None,
+            _ => {}
+        }
+
+        // TODO: refactor into iterator
         let mut links = vec![];
-
         for region in self.regions.values() {
             for link in region.links.iter() {
                 if &region.name > link {
@@ -230,21 +276,24 @@ impl Country {
                 }
             }
         }
+        // links.sort_by(|a, b| {
+        //     (self.regions[&a.0].gdp + self.regions[&a.1].gdp).partial_cmp(
+        //         &(self.regions[&b.0].gdp + self.regions[&b.1].gdp)
+        //     ).unwrap_or(Ordering::Less)
+        // });
 
-        let best = links
-            .into_par_iter()
-            .map(|link| {
-                let mut cloned = self.clone();
-                cloned.fuse_regions((link.0.as_ref(), link.1.as_ref()));
-                cloned.optimize2(target_count).unwrap();
-                cloned
-            })
-            .min_by(|a, b| {
-                a.std_dev_sq()
-                    .partial_cmp(&b.std_dev_sq())
-                    .unwrap_or(Ordering::Less)
-            });
-        best.map(|b| *self = b).ok_or(())
+        let mut best = None;
+        for link in links {
+            let mut cloned = self.clone();
+            cloned.fuse_regions((link.0.as_ref(), link.1.as_ref()));
+            if cloned.optimal_std_dev_sq2(target_count) < *best_std_dev_sq_yet {
+                let result = cloned.optimize3_quel_enfer(target_count, best_std_dev_sq_yet);
+                if result.is_some() {
+                    best = result;
+                }
+            }
+        }
+        best
     }
 
     fn remove_link_from_region(&mut self, region_name: &str, name: &str) {
@@ -362,5 +411,17 @@ mod tests {
         let mut country: Country = INPUT_TEST.parse().unwrap();
 
         assert_eq!(country.optimal_std_dev_sq(2), 1.0)
+    }
+
+    #[test]
+    fn optimal_std_dev_sq2() {
+        let country: Country = INPUT_TEST.parse().unwrap();
+        assert_eq!(country.optimal_std_dev_sq2(2), 1.0);
+
+        // let country: Country = INPUT.parse().unwrap();
+        // assert_eq!(
+        //     country.optimal_std_dev_sq2(6).sqrt(),
+        //     1.0
+        // );
     }
 }
