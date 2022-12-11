@@ -1,11 +1,11 @@
+mod organize;
 mod region;
 use region::{Money, Region};
 
 use rayon::prelude::*;
 use std::cmp::Ordering;
 use std::collections::HashMap;
-use std::fmt;
-use std::fmt::Formatter;
+use std::fmt::{self, Formatter};
 use std::str::FromStr;
 use std::sync::RwLock;
 
@@ -22,14 +22,19 @@ pub struct Country {
 }
 
 impl Country {
+    /// Calculates the total GDP.
     fn total_gdp(&self) -> Money {
         self.regions.values().map(|r| r.gdp).sum()
     }
 
+    /// Calculated the GDP average.
     fn avg_gdp(&self) -> Money {
         self.total_gdp() / self.regions.len() as Money
     }
 
+    /// Calculates the GDP standard deviation squared.
+    /// This is useful when comparing GDPs.
+    /// As square roots can be computationally heavy.
     fn std_dev_sq(&self) -> Money {
         let avg_gdp = self.avg_gdp();
 
@@ -40,49 +45,14 @@ impl Country {
             / self.regions.len() as Money
     }
 
+    /// Calculates the GDP standard deviation.
     fn std_dev(&self) -> Money {
         self.std_dev_sq().sqrt()
     }
 
+    /// Generates a minimal accessible bound
+    /// by the GDP's standard deviation by region fusion.
     fn optimal_std_dev_sq(&self, target_count: usize) -> Money {
-        let mut gdp_sorted: Vec<_> = self.regions.values().map(|r| r.gdp).collect();
-
-        gdp_sorted.sort_by(money_compare);
-
-        let to_fuse = gdp_sorted.len() - target_count;
-        let mut to_spread: Money = gdp_sorted[..to_fuse].iter().sum();
-
-        let to_spread_on = &mut gdp_sorted[to_fuse..];
-
-        let mut surface_heigth = to_spread_on[0];
-        for surface_width in 1.. {
-            let fill_height = match to_spread_on.get(surface_width) {
-                Some(x) => (x - surface_heigth) / surface_width as Money,
-                None => to_spread / surface_width as Money,
-            };
-
-            let to_add = fill_height.min(to_spread / surface_width as Money);
-            surface_heigth += to_add;
-            to_spread -= to_add;
-
-            if to_spread <= 0.0 {
-                to_spread_on[..surface_width].iter_mut().for_each(|v| {
-                    *v = surface_heigth / surface_width as Money;
-                });
-                break;
-            }
-        }
-
-        let avg_gdp = self.total_gdp() / target_count as Money;
-
-        to_spread_on
-            .iter()
-            .map(|gdp| (gdp - avg_gdp).powi(2))
-            .sum::<Money>()
-            / target_count as Money
-    }
-
-    fn optimal_std_dev_sq2(&self, target_count: usize) -> Money {
         let mut gdp_sorted: Vec<_> = self.regions.values().map(|r| r.gdp).collect();
         gdp_sorted.sort_by(money_compare);
         let to_fuse = gdp_sorted.len() - target_count;
@@ -110,59 +80,9 @@ impl Country {
         0.0
     }
 
-    fn regions_to_fuse(&self, target_gdp: Money) -> (String, String) {
-        let score = |(a, b): (&Region, &Region)| (a.gdp + b.gdp - target_gdp).abs();
-        let mut best: Option<(&Region, &Region)> = None;
-        for region in self.regions.values() {
-            for other in region.links.iter().map(|o| &self.regions[o]) {
-                match best {
-                    None => best = Some((region, other)),
-                    Some(ref mut best) => {
-                        if score((region, other)) < score(*best) {
-                            *best = (region, other);
-                        }
-                    }
-                }
-            }
-        }
-        let best = best.unwrap();
-        (best.0.name.clone(), best.1.name.clone())
-    }
-
-    fn regions_to_fuse_smallest(&self, target_gdp: Money) -> (String, String) {
-        let score = |(a, b): (&Region, &Region)| (a.gdp + b.gdp - target_gdp).abs();
-        let mut sorted: Vec<&Region> = self.regions.values().collect();
-        sorted.sort_by(|a, b| a.gdp.partial_cmp(&b.gdp).unwrap_or(Ordering::Less));
-
-        for region in sorted {
-            let mut best: Option<(&Region, &Region)> = None;
-            for other in region.links.iter().map(|r| &self.regions[r]) {
-                match best {
-                    None => best = Some((region, other)),
-                    Some(ref mut best) => {
-                        if score((region, other)) < score(*best) {
-                            *best = (region, other);
-                        }
-                    }
-                }
-            }
-            if let Some(best) = best {
-                return (best.0.name.clone(), best.1.name.clone());
-            }
-        }
-        panic!("Could not find any link")
-    }
-
-    pub fn organize(&mut self, count: usize) {
-        let final_avg_gdp = self.total_gdp() / count as Money;
-
-        while self.regions.len() > count {
-            // let best = self.regions_to_fuse(final_avg_gdp);
-            let best = self.regions_to_fuse_smallest(final_avg_gdp);
-            self.fuse_regions((&best.0, &best.1));
-        }
-    }
-
+    /// Optimize regions by fusing them in order to
+    /// reduce the GDP's standard deviation.
+    /// Resulting in a country with <target_count> regions.
     pub fn optimize(&mut self, target_count: usize) -> Result<(), ()> {
         match target_count.cmp(&self.regions.len()) {
             Ordering::Equal => return Ok(()),
@@ -282,6 +202,8 @@ impl Country {
                 }
             }
         }
+
+        // TODO: find optimal euristic
         // links.sort_by(|a, b| {
         //     (self.regions[&a.0].gdp + self.regions[&a.1].gdp).partial_cmp(
         //         &(self.regions[&b.0].gdp + self.regions[&b.1].gdp)
@@ -304,7 +226,7 @@ impl Country {
             .map(|link| {
                 let mut cloned = self.clone();
                 cloned.fuse_regions((link.0.as_ref(), link.1.as_ref()));
-                if cloned.optimal_std_dev_sq2(target_count) < best_yet.read().unwrap().0 {
+                if cloned.optimal_std_dev_sq(target_count) < best_yet.read().unwrap().0 {
                     cloned.optimize3_recursion(target_count, best_yet);
                 }
             })
@@ -421,7 +343,7 @@ mod tests {
 
     #[test]
     fn optimal_std_dev_sq() {
-        let mut country: Country = INPUT_TEST.parse().unwrap();
+        let country: Country = INPUT_TEST.parse().unwrap();
 
         assert_eq!(country.optimal_std_dev_sq(2), 1.0)
     }
@@ -429,13 +351,14 @@ mod tests {
     #[test]
     fn optimal_std_dev_sq2() {
         let country: Country = INPUT_TEST.parse().unwrap();
-        assert_eq!(country.optimal_std_dev_sq2(2), 1.0);
+        assert_eq!(country.optimal_std_dev_sq(2), 1.0);
     }
 
     #[test]
     fn optmize_with_zero_size() {
         let mut country: Country = INPUT_TEST.parse().unwrap();
-        assert!(matches!(country.optimize3(0), Err(_)),
+        assert!(
+            matches!(country.optimize3(0), Err(_)),
             "Optmizing down to 0 elements should not be possible"
         )
     }

@@ -56,6 +56,7 @@ fn do_work(config: &Config) -> Result<(), Box<dyn Error>> {
 }
 
 fn main() {
+    // Parse arguments
     let config = match Config::from_args(args()) {
         Ok(config) => config,
         Err(error) => {
@@ -64,6 +65,7 @@ fn main() {
         }
     };
 
+    // Read process & write to output
     match do_work(&config) {
         Ok(()) => println!("Done!"),
         Err(error) => {
