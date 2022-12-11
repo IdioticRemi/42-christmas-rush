@@ -238,24 +238,26 @@ impl Country {
         best.map(|b| *self = b).ok_or(())
     }
 
-    pub fn optimize3(&mut self, target_count: usize) -> Result<(), ()> {
+    pub fn optimize3(&mut self, target_count: usize) -> Result<(), &'static str> {
         match target_count.cmp(&self.regions.len()) {
             Ordering::Equal => return Ok(()),
-            Ordering::Greater => return Err(()),
+            Ordering::Greater => {
+                return Err("target region count cannot be less than initial region count")
+            }
             _ => {}
         }
         // let mut best_yet = Money::INFINITY;
         let mut best_yet = RwLock::new((Money::INFINITY, None));
-        self.optimize3_quel_enfer(target_count, &mut best_yet);
+        self.optimize3_recursion(target_count, &mut best_yet);
         best_yet
             .into_inner()
-            .unwrap()
+            .expect("Could not recover best result")
             .1
             .map(|r| *self = r)
-            .ok_or(())
+            .ok_or("Could not find an optimal solution")
     }
 
-    pub fn optimize3_quel_enfer(
+    pub fn optimize3_recursion(
         &self,
         target_count: usize,
         best_yet: &RwLock<(Money, Option<Country>)>,
@@ -303,7 +305,7 @@ impl Country {
                 let mut cloned = self.clone();
                 cloned.fuse_regions((link.0.as_ref(), link.1.as_ref()));
                 if cloned.optimal_std_dev_sq2(target_count) < best_yet.read().unwrap().0 {
-                    cloned.optimize3_quel_enfer(target_count, best_yet);
+                    cloned.optimize3_recursion(target_count, best_yet);
                 }
             })
             .for_each(|_| {});
@@ -343,15 +345,13 @@ impl Country {
 }
 
 impl FromStr for Country {
-    // TODO: Faire les erreurs
-    type Err = ();
+    type Err = <Region as FromStr>::Err;
 
     fn from_str(input: &str) -> Result<Self, Self::Err> {
         let regions = input
             .lines()
-            .map(|l| l.parse().unwrap())
-            .map(|r: Region| (r.name.clone(), r))
-            .collect();
+            .map(|l| l.parse().map(|r: Region| (r.name.clone(), r)))
+            .collect::<Result<_, _>>()?;
 
         Ok(Self { regions })
     }
@@ -430,11 +430,13 @@ mod tests {
     fn optimal_std_dev_sq2() {
         let country: Country = INPUT_TEST.parse().unwrap();
         assert_eq!(country.optimal_std_dev_sq2(2), 1.0);
+    }
 
-        // let country: Country = INPUT.parse().unwrap();
-        // assert_eq!(
-        //     country.optimal_std_dev_sq2(6).sqrt(),
-        //     1.0
-        // );
+    #[test]
+    fn optmize_with_zero_size() {
+        let mut country: Country = INPUT_TEST.parse().unwrap();
+        assert!(matches!(country.optimize3(0), Err(_)),
+            "Optmizing down to 0 elements should not be possible"
+        )
     }
 }
